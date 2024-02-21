@@ -1,10 +1,14 @@
 package org.example
 
+import com.mongodb.internal.connection.ByteBufferBsonOutput
 import com.mongodb.kotlin.client.coroutine.MongoClient
-import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import org.bson.BsonBinaryWriter
+import org.bson.BsonWriter
+import org.bson.ByteBufNIO
+import org.bson.codecs.EncoderContext
+import org.bson.codecs.kotlinx.KotlinSerializerCodec
+import java.nio.ByteBuffer
 
 @Serializable
 data class Sample<T>(
@@ -18,27 +22,28 @@ data class Container(
 )
 
 suspend fun main() {
-    val data = Container(Sample("foo"))
-    json(data)
-    mongo(data)
-}
+    val containerFoo = Container(Sample("foo"))
+    val containerNull = Container(Sample(null))
 
-private fun json(data: Container) {
-    val string = Json.encodeToString(data)
-    println(string)
+    // Using the codec directly
+    val codec = KotlinSerializerCodec.create<Container>()!!
+    val byteBuffer = ByteBuffer.allocate(64)
+    val byteBufferBsonOutput = ByteBufferBsonOutput { ByteBufNIO(byteBuffer) }
+    val writer: BsonWriter = BsonBinaryWriter(byteBufferBsonOutput)
+    val encoderContext: EncoderContext = EncoderContext.builder().build()
+    codec.encode(writer, containerFoo, encoderContext)
+    codec.encode(writer, containerNull, encoderContext)
 
-    val obj = Json.decodeFromString<Container>(string)
-    println(obj)
-}
-
-suspend fun mongo(data: Container) {
+    // Actually writing to Mongo
     MongoClient.create("mongodb://localhost:27017").use { client ->
         val database = client.getDatabase("mydb")
         val collection = database.getCollection<Container>("containers")
 
-        collection.insertOne(data)
-        val doc = collection.find().first()
+        collection.insertOne(containerFoo)
+        collection.insertOne(containerNull)
 
-        println(doc)
+        collection.find().collect {
+            println(it)
+        }
     }
 }
