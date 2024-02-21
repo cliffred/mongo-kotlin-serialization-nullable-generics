@@ -13,11 +13,12 @@ data class Sample<T>(
 
 @Serializable
 data class Container(
+    // Using a nullable generic causes the exception, Sample<String> works fine
     val sample: Sample<String?>,
 )
 
 suspend fun main() {
-    val data = Container(Sample(null))
+    val data = Container(Sample("foo"))
     json(data)
     mongo(data)
 }
